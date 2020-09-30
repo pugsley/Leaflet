@@ -52,9 +52,17 @@ export var Canvas = Renderer.extend({
 	onAdd: function () {
 		Renderer.prototype.onAdd.call(this);
 
+		// Add this renderer so the map can quickly reference it
+		this._map._registerCanvasRenderer(this);
+
 		// Redraw vectors since canvas is cleared upon removal,
 		// in case of removing the renderer itself from the map.
 		this._draw();
+	},
+
+	onRemove: function () {
+		this._map._deRegisterCanvasRenderer(this);
+		Renderer.prototype.onRemove.call(this);
 	},
 
 	_initContainer: function () {
@@ -340,6 +348,17 @@ export var Canvas = Renderer.extend({
 		}
 	},
 
+	_dispatchEvent: function (e) {
+		switch (e.type) {
+		case 'mousemove':
+			this._onMouseMove(e);
+			break;
+		case 'click':
+			this._onClick(e);
+			break;
+		}
+	},
+
 	// Canvas obviously doesn't have mouse events for individual drawn objects,
 	// so we emulate that by calculating what's under the mouse on mousemove/click manually
 
@@ -357,6 +376,9 @@ export var Canvas = Renderer.extend({
 		if (clickedLayer)  {
 			DomEvent.fakeStop(e);
 			this._fireEvent([clickedLayer], e);
+		} else {
+			// Layer wasn't found, send to map to find if other canvas layers can handle event
+			this._map._forwardCanvasEvent(this, e);
 		}
 	},
 
@@ -372,7 +394,7 @@ export var Canvas = Renderer.extend({
 		var layer = this._hoveredLayer;
 		if (layer) {
 			// if we're leaving the layer, fire mouseout
-			DomUtil.removeClass(this._container, 'leaflet-interactive');
+			DomUtil.removeClass(this._map._panes.mapPane, 'leaflet-interactive');
 			this._fireEvent([layer], e, 'mouseout');
 			this._hoveredLayer = null;
 			this._mouseHoverThrottled = false;
@@ -397,10 +419,15 @@ export var Canvas = Renderer.extend({
 			this._handleMouseOut(e);
 
 			if (candidateHoveredLayer) {
-				DomUtil.addClass(this._container, 'leaflet-interactive'); // change cursor
+				DomUtil.addClass(this._map._panes.mapPane, 'leaflet-interactive'); // change cursor
 				this._fireEvent([candidateHoveredLayer], e, 'mouseover');
 				this._hoveredLayer = candidateHoveredLayer;
 			}
+		}
+
+		// If no layer was found, forward it to the next canvas renderer if it exists
+		if (!candidateHoveredLayer) {
+			this._map._forwardCanvasEvent(this, e);
 		}
 
 		if (this._hoveredLayer) {

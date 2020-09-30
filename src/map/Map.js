@@ -131,6 +131,7 @@ export var Map = Evented.extend({
 		this._handlers = [];
 		this._layers = {};
 		this._zoomBoundLayers = {};
+		this._canvasRenderers = [];
 		this._sizeChanged = true;
 
 		this._initContainer(id);
@@ -1632,6 +1633,59 @@ export var Map = Evented.extend({
 		var c = this.getCenter(),
 		    z = this.getZoom();
 		DomUtil.setTransform(this._proxy, this.project(c, z), this.getZoomScale(z, 1));
+	},
+
+	_registerCanvasRenderer: function (layer) {
+		// If there's more than one canvas renderer, reorder the layers by html stacking order
+		if (this._canvasRenderers.push(layer) > 1) {
+			this._orderCanvasRenderersByDepth();
+		}
+	},
+
+	_orderCanvasRenderersByDepth: function () {
+		if (!this._canvasRenderers[0]) {
+			return;
+		}
+
+		// Get center point of the first canvas layer.
+		// Which layer is irrelevant because they _should_ all cover the complete map area.
+		// Most importantly we're getting a point that intersects all canvases.
+		var container = this._canvasRenderers[0]._container;
+		var bRect = container.getBoundingClientRect();
+		var posX = window.scrollX + bRect.left + (Math.floor((bRect.right - bRect.left)) / 2);
+		var posY = window.scrollY + bRect.top + (Math.floor((bRect.bottom - bRect.top)) / 2);
+
+		// Get all the canvas elements under the center point
+		var canvasElems = document.elementsFromPoint(posX, posY)
+			.filter(function (elem) { return elem.nodeName.toLowerCase() === 'canvas'; });
+
+		// Loop through all canvas elements and match them with existing canvas renderers.
+		// Use the order of the canvas elements to order the canvas renderers (top > bottom)
+		var newCanvasRenderers = [];
+		for (var i = 0, len = canvasElems.length; i < len; i++) {
+			for (var j = 0, jLen = this._canvasRenderers.length; j < jLen; j++) {
+				if (canvasElems[i] === this._canvasRenderers[j]._container) {
+					newCanvasRenderers.push(this._canvasRenderers[j]);
+					break;
+				}
+			}
+		}
+		this._canvasRenderers = newCanvasRenderers;
+	},
+
+	_forwardCanvasEvent: function (layer, e) {
+		var pos = this._canvasRenderers.indexOf(layer);
+		if (pos < this._canvasRenderers.length - 1) {
+			// Forward to the next renderer below the renderer that originally received the event
+			this._canvasRenderers[pos + 1]._dispatchEvent(e);
+		}
+	},
+
+	_deRegisterCanvasRenderer: function (layer) {
+		var pos = this._canvasRenderers.indexOf(layer);
+		if (pos !== -1) {
+			this._canvasRenderers.splice(pos, 1);
+		}
 	},
 
 	_catchTransitionEnd: function (e) {
