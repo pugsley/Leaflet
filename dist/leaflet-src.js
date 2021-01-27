@@ -3144,6 +3144,7 @@ var Map = Evented.extend({
 		this._handlers = [];
 		this._layers = {};
 		this._zoomBoundLayers = {};
+		this._canvasRenderers = [];
 		this._sizeChanged = true;
 
 		this._initContainer(id);
@@ -4644,6 +4645,59 @@ var Map = Evented.extend({
 		var c = this.getCenter(),
 		    z = this.getZoom();
 		setTransform(this._proxy, this.project(c, z), this.getZoomScale(z, 1));
+	},
+
+	_registerCanvasRenderer: function (layer) {
+		// If there's more than one canvas renderer, reorder the layers by html stacking order
+		if (this._canvasRenderers.push(layer) > 1) {
+			this._orderCanvasRenderersByDepth();
+		}
+	},
+
+	_orderCanvasRenderersByDepth: function () {
+		if (!this._canvasRenderers[0]) {
+			return;
+		}
+
+		// Get center point of the first canvas layer.
+		// Which layer is irrelevant because they _should_ all cover the complete map area.
+		// Most importantly we're getting a point that intersects all canvases.
+		var container = this._canvasRenderers[0]._container;
+		var bRect = container.getBoundingClientRect();
+		var posX = window.scrollX + bRect.left + (Math.floor((bRect.right - bRect.left)) / 2);
+		var posY = window.scrollY + bRect.top + (Math.floor((bRect.bottom - bRect.top)) / 2);
+
+		// Get all the canvas elements under the center point
+		var canvasElems = document.elementsFromPoint(posX, posY)
+			.filter(function (elem) { return elem.nodeName.toLowerCase() === 'canvas'; });
+
+		// Loop through all canvas elements and match them with existing canvas renderers.
+		// Use the order of the canvas elements to order the canvas renderers (top > bottom)
+		var newCanvasRenderers = [];
+		for (var i = 0, len = canvasElems.length; i < len; i++) {
+			for (var j = 0, jLen = this._canvasRenderers.length; j < jLen; j++) {
+				if (canvasElems[i] === this._canvasRenderers[j]._container) {
+					newCanvasRenderers.push(this._canvasRenderers[j]);
+					break;
+				}
+			}
+		}
+		this._canvasRenderers = newCanvasRenderers;
+	},
+
+	_forwardCanvasEvent: function (layer, e) {
+		var pos = this._canvasRenderers.indexOf(layer);
+		if (pos < this._canvasRenderers.length - 1) {
+			// Forward to the next renderer below the renderer that originally received the event
+			this._canvasRenderers[pos + 1]._dispatchEvent(e);
+		}
+	},
+
+	_deRegisterCanvasRenderer: function (layer) {
+		var pos = this._canvasRenderers.indexOf(layer);
+		if (pos !== -1) {
+			this._canvasRenderers.splice(pos, 1);
+		}
 	},
 
 	_catchTransitionEnd: function (e) {
@@ -12154,9 +12208,17 @@ var Canvas = Renderer.extend({
 	onAdd: function () {
 		Renderer.prototype.onAdd.call(this);
 
+		// Add this renderer so the map can quickly reference it
+		this._map._registerCanvasRenderer(this);
+
 		// Redraw vectors since canvas is cleared upon removal,
 		// in case of removing the renderer itself from the map.
 		this._draw();
+	},
+
+	onRemove: function () {
+		this._map._deRegisterCanvasRenderer(this);
+		Renderer.prototype.onRemove.call(this);
 	},
 
 	_initContainer: function () {
@@ -12439,6 +12501,17 @@ var Canvas = Renderer.extend({
 		}
 	},
 
+	_dispatchEvent: function (e) {
+		switch (e.type) {
+		case 'mousemove':
+			this._onMouseMove(e);
+			break;
+		case 'click':
+			this._onClick(e);
+			break;
+		}
+	},
+
 	// Canvas obviously doesn't have mouse events for individual drawn objects,
 	// so we emulate that by calculating what's under the mouse on mousemove/click manually
 
@@ -12454,6 +12527,9 @@ var Canvas = Renderer.extend({
 		if (clickedLayer)  {
 			fakeStop(e);
 			this._fireEvent([clickedLayer], e);
+		} else {
+			// Layer wasn't found, send to map to find if other canvas layers can handle event
+			this._map._forwardCanvasEvent(this, e);
 		}
 	},
 
@@ -12469,7 +12545,7 @@ var Canvas = Renderer.extend({
 		var layer = this._hoveredLayer;
 		if (layer) {
 			// if we're leaving the layer, fire mouseout
-			removeClass(this._container, 'leaflet-interactive');
+			removeClass(this._map._panes.mapPane, 'leaflet-interactive');
 			this._fireEvent([layer], e, 'mouseout');
 			this._hoveredLayer = null;
 			this._mouseHoverThrottled = false;
@@ -12494,10 +12570,15 @@ var Canvas = Renderer.extend({
 			this._handleMouseOut(e);
 
 			if (candidateHoveredLayer) {
-				addClass(this._container, 'leaflet-interactive'); // change cursor
+				addClass(this._map._panes.mapPane, 'leaflet-interactive'); // change cursor
 				this._fireEvent([candidateHoveredLayer], e, 'mouseover');
 				this._hoveredLayer = candidateHoveredLayer;
 			}
+		}
+
+		// If no layer was found, forward it to the next canvas renderer if it exists
+		if (!candidateHoveredLayer) {
+			this._map._forwardCanvasEvent(this, e);
 		}
 
 		if (this._hoveredLayer) {
