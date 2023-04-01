@@ -131,6 +131,7 @@ export var Map = Evented.extend({
 		this._handlers = [];
 		this._layers = {};
 		this._zoomBoundLayers = {};
+		this._canvasRenderers = [];
 		this._sizeChanged = true;
 
 		this._initContainer(id);
@@ -1419,14 +1420,9 @@ export var Map = Evented.extend({
 		// Find the layer the event is propagating from and its parents.
 		var targets = this._findEventTargets(e, type);
 
-		if (canvasTargets) {
-			var filtered = []; // pick only targets with listeners
-			for (var i = 0; i < canvasTargets.length; i++) {
-				if (canvasTargets[i].listens(type, true)) {
-					filtered.push(canvasTargets[i]);
-				}
-			}
-			targets = filtered.concat(targets);
+		// Don't filter like Leaflet wants to
+		if (Array.isArray(canvasTargets)) {
+			targets = canvasTargets.concat(targets);
 		}
 
 		if (!targets.length) { return; }
@@ -1448,7 +1444,7 @@ export var Map = Evented.extend({
 			data.latlng = isMarker ? target.getLatLng() : this.layerPointToLatLng(data.layerPoint);
 		}
 
-		for (i = 0; i < targets.length; i++) {
+		for (var i = 0; i < targets.length; i++) {
 			targets[i].fire(type, data, true);
 			if (data.originalEvent._stopped ||
 				(targets[i].options.bubblingMouseEvents === false && Util.indexOf(this._mouseEvents, type) !== -1)) { return; }
@@ -1644,6 +1640,62 @@ export var Map = Evented.extend({
 		var c = this.getCenter(),
 		    z = this.getZoom();
 		DomUtil.setTransform(this._proxy, this.project(c, z), this.getZoomScale(z, 1));
+	},
+
+	_registerCanvasRenderer: function (layer) {
+		// If there's more than one canvas renderer, reorder the layers by html stacking order
+		if (this._canvasRenderers.push(layer) > 1) {
+			this._orderCanvasRenderersByDepth();
+		}
+	},
+
+	_orderCanvasRenderersByDepth: function () {
+		if (!this._canvasRenderers[0]) {
+			return;
+		}
+
+		// Get center point of the first canvas layer.
+		// Which layer is irrelevant because they _should_ all cover the complete map area.
+		// Most importantly we're getting a point that intersects all canvases.
+		const container = this._canvasRenderers[0]._container;
+		const bRect = container.getBoundingClientRect();
+		const posX = window.scrollX + bRect.left + (Math.floor((bRect.right - bRect.left)) / 2);
+		const posY = window.scrollY + bRect.top + (Math.floor((bRect.bottom - bRect.top)) / 2);
+
+		// Get all the canvas elements under the center point
+		const canvasElems = document.elementsFromPoint(posX, posY)
+			.filter(elem => elem.nodeName.toLowerCase() === 'canvas');
+
+		// Loop through all canvas elements and match them with existing canvas renderers.
+		// Use the order of the canvas elements to order the canvas renderers (top > bottom)
+		const newCanvasRenderers = [];
+		for (let i = 0, len = canvasElems.length; i < len; i++) {
+			for (let j = 0, jLen = this._canvasRenderers.length; j < jLen; j++) {
+				if (canvasElems[i] === this._canvasRenderers[j]._container) {
+					newCanvasRenderers.push(this._canvasRenderers[j]);
+					break;
+				}
+			}
+		}
+		this._canvasRenderers = newCanvasRenderers;
+	},
+
+	_forwardCanvasEvent: function (layer, e) {
+		const pos = this._canvasRenderers.indexOf(layer);
+		if (pos < this._canvasRenderers.length - 1) {
+			// Forward to the next renderer below the renderer that originally received the event
+			this._canvasRenderers[pos + 1]._dispatchEvent(e);
+		} else {
+			// Finally drop event through to map if there are no more canvas layers
+			this._fireDOMEvent(e, e.type, false);
+		}
+	},
+
+	_deRegisterCanvasRenderer: function (layer) {
+		const pos = this._canvasRenderers.indexOf(layer);
+		if (pos !== -1) {
+			this._canvasRenderers.splice(pos, 1);
+		}
 	},
 
 	_catchTransitionEnd: function (e) {
