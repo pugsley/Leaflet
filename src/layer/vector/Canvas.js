@@ -365,6 +365,8 @@ export const Canvas = Renderer.extend({
 			this._onMouseMove(e);
 			break;
 		case 'click':
+		case 'mousedown':
+		case 'mouseup':
 			this._onClick(e);
 			break;
 		}
