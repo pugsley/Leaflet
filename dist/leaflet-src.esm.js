@@ -1,5 +1,5 @@
 /* @preserve
- * Leaflet 1.9.2+feature/leaflet-1.9.3.571a72ae, a JS library for interactive maps. https://leafletjs.com
+ * Leaflet 1.9.2+feature/leaflet-1.9.3.6f2dde19, a JS library for interactive maps. https://leafletjs.com
  * (c) 2010-2023 Volodymyr Agafonkin, (c) 2010-2011 CloudMade
  */
 
@@ -4611,14 +4611,14 @@ const Map = Evented.extend({
 		setTransform(this._proxy, this.project(c, z), this.getZoomScale(z, 1));
 	},
 
-	_registerCanvasRenderer: function (layer) {
+	_registerCanvasRenderer(layer) {
 		// If there's more than one canvas renderer, reorder the layers by html stacking order
 		if (this._canvasRenderers.push(layer) > 1) {
 			this._orderCanvasRenderersByDepth();
 		}
 	},
 
-	_orderCanvasRenderersByDepth: function () {
+	_orderCanvasRenderersByDepth() {
 		if (!this._canvasRenderers[0]) {
 			return;
 		}
@@ -4626,20 +4626,20 @@ const Map = Evented.extend({
 		// Get center point of the first canvas layer.
 		// Which layer is irrelevant because they _should_ all cover the complete map area.
 		// Most importantly we're getting a point that intersects all canvases.
-		var container = this._canvasRenderers[0]._container;
-		var bRect = container.getBoundingClientRect();
-		var posX = window.scrollX + bRect.left + (Math.floor((bRect.right - bRect.left)) / 2);
-		var posY = window.scrollY + bRect.top + (Math.floor((bRect.bottom - bRect.top)) / 2);
+		const container = this._canvasRenderers[0]._container;
+		const bRect = container.getBoundingClientRect();
+		const posX = window.scrollX + bRect.left + (Math.floor((bRect.right - bRect.left)) / 2);
+		const posY = window.scrollY + bRect.top + (Math.floor((bRect.bottom - bRect.top)) / 2);
 
 		// Get all the canvas elements under the center point
-		var canvasElems = document.elementsFromPoint(posX, posY)
-			.filter(function (elem) { return elem.nodeName.toLowerCase() === 'canvas'; });
+		const canvasElems = document.elementsFromPoint(posX, posY)
+			.filter(elem => elem.nodeName.toLowerCase() === 'canvas');
 
 		// Loop through all canvas elements and match them with existing canvas renderers.
 		// Use the order of the canvas elements to order the canvas renderers (top > bottom)
-		var newCanvasRenderers = [];
-		for (var i = 0, len = canvasElems.length; i < len; i++) {
-			for (var j = 0, jLen = this._canvasRenderers.length; j < jLen; j++) {
+		const newCanvasRenderers = [];
+		for (let i = 0, len = canvasElems.length; i < len; i++) {
+			for (let j = 0, jLen = this._canvasRenderers.length; j < jLen; j++) {
 				if (canvasElems[i] === this._canvasRenderers[j]._container) {
 					newCanvasRenderers.push(this._canvasRenderers[j]);
 					break;
@@ -4649,8 +4649,8 @@ const Map = Evented.extend({
 		this._canvasRenderers = newCanvasRenderers;
 	},
 
-	_forwardCanvasEvent: function (layer, e) {
-		var pos = this._canvasRenderers.indexOf(layer);
+	_forwardCanvasEvent(layer, e) {
+		const pos = this._canvasRenderers.indexOf(layer);
 		if (pos < this._canvasRenderers.length - 1) {
 			// Forward to the next renderer below the renderer that originally received the event
 			this._canvasRenderers[pos + 1]._dispatchEvent(e);
@@ -4660,8 +4660,8 @@ const Map = Evented.extend({
 		}
 	},
 
-	_deRegisterCanvasRenderer: function (layer) {
-		var pos = this._canvasRenderers.indexOf(layer);
+	_deRegisterCanvasRenderer(layer) {
+		const pos = this._canvasRenderers.indexOf(layer);
 		if (pos !== -1) {
 			this._canvasRenderers.splice(pos, 1);
 		}
@@ -12462,7 +12462,7 @@ const Canvas = Renderer.extend({
 		this._draw();
 	},
 
-	onRemove: function () {
+	onRemove() {
 		this._map._deRegisterCanvasRenderer(this);
 		Renderer.prototype.onRemove.call(this);
 	},
@@ -12752,12 +12752,14 @@ const Canvas = Renderer.extend({
 		}
 	},
 
-	_dispatchEvent: function (e) {
+	_dispatchEvent(e) {
 		switch (e.type) {
 		case 'mousemove':
 			this._onMouseMove(e);
 			break;
 		case 'click':
+		case 'mousedown':
+		case 'mouseup':
 			this._onClick(e);
 			break;
 		}
