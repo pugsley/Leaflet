@@ -1420,7 +1420,10 @@ export var Map = Evented.extend({
 		// Find the layer the event is propagating from and its parents.
 		var targets = this._findEventTargets(e, type);
 
-		// Don't filter like Leaflet wants to
+		// Add canvas targets to the front of targets array
+		// Leaflet src code wants to exclude canvas targets that don't have specific event listeners but that doesn't
+		// work for our purposes - e.g. if you click on a canvas target, we don't want that event to fall through to the map
+		// if the target has bubblingMouseEvents set to false. See line 1455.
 		if (Array.isArray(canvasTargets)) {
 			targets = canvasTargets.concat(targets);
 		}

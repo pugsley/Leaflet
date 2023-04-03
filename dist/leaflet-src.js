@@ -1,5 +1,5 @@
 /* @preserve
- * Leaflet 1.9.2+feature/leaflet-1.9.3.6f2dde19, a JS library for interactive maps. https://leafletjs.com
+ * Leaflet 1.9.2+feature/leaflet-1.9.3.209ac42d, a JS library for interactive maps. https://leafletjs.com
  * (c) 2010-2023 Volodymyr Agafonkin, (c) 2010-2011 CloudMade
  */
 
@@ -4395,7 +4395,10 @@
   		// Find the layer the event is propagating from and its parents.
   		let targets = this._findEventTargets(e, type);
 
-  		// Don't filter like Leaflet wants to
+  		// Add canvas targets to the front of targets array
+  		// Leaflet src code wants to exclude canvas targets that don't have specific event listeners but that doesn't
+  		// work for our purposes - e.g. if you click on a canvas target, we don't want that event to fall through to the map
+  		// if the target has bubblingMouseEvents set to false. See line 1455.
   		if (Array.isArray(canvasTargets)) {
   			targets = canvasTargets.concat(targets);
   		}
