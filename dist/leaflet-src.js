@@ -1,5 +1,5 @@
 /* @preserve
- * Leaflet 1.9.2+feature/leaflet-1.9.3.209ac42d, a JS library for interactive maps. https://leafletjs.com
+ * Leaflet 1.9.2+feature/leaflet-1.9.3.bd0938b2, a JS library for interactive maps. https://leafletjs.com
  * (c) 2010-2023 Volodymyr Agafonkin, (c) 2010-2011 CloudMade
  */
 
@@ -12841,12 +12841,12 @@
   			}
   		}
 
-  		// If no layer was found, forward it to the next canvas renderer if it exists
-  		if (!candidateHoveredLayer) {
+  		if (candidateHoveredLayer) {
+  			this._fireEvent([this._hoveredLayer], e);
+  		} else {
+  			// If no layer was found, forward it to the next canvas renderer if it exists
   			this._map._forwardCanvasEvent(this, e);
   		}
-
-  		this._fireEvent(this._hoveredLayer ? [this._hoveredLayer] : false, e);
 
   		this._mouseHoverThrottled = true;
   		setTimeout((() => {
