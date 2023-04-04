@@ -439,12 +439,12 @@ export const Canvas = Renderer.extend({
 			}
 		}
 
-		// If no layer was found, forward it to the next canvas renderer if it exists
-		if (!candidateHoveredLayer) {
+		if (candidateHoveredLayer) {
+			this._fireEvent([this._hoveredLayer], e);
+		} else {
+			// If no layer was found, forward it to the next canvas renderer if it exists
 			this._map._forwardCanvasEvent(this, e);
 		}
-
-		this._fireEvent(this._hoveredLayer ? [this._hoveredLayer] : false, e);
 
 		this._mouseHoverThrottled = true;
 		setTimeout((() => {
